@@ -1,0 +1,64 @@
+pipeline {
+    agent any
+    tools {
+        jdk "jdk11"
+        maven "maven"   
+    }
+    environment {
+       SCANNER_HOME = tool "sonar-scanner"   
+    }
+    stages {
+        stage('Git checkout') {
+            steps {
+                git changelog: false, poll: false, url: 'https://github.com/Humanbeingvish/pet-store.git'
+            }
+        }
+        
+        stage('Compile') {
+            steps {
+                sh "mvn clean compile"
+            }
+        }
+        
+        stage('Sonarqube Analysis') {
+            steps {
+                sh '''$SCANNER_HOME/bin/sonar-scanner -Dsonar.url=http://3.95.238.117:9000/ -Dsonar.login=squ_ec5191ae398c7a09b13c01602787282a0a9e1afa -Dsonar.projectName=petstore\
+                      -Dsonar.java.binaries=.\
+                      -Dsonar.projectKey=petstore'''
+            }
+        }
+        
+        stage('OWASP Dependency') {
+            steps {
+                dependencyCheck additionalArguments: ' --scan ./ ', odcInstallation: 'DP'
+                dependencyCheckPublisher pattern: '**/dependency-check-report.xml'
+            }
+        }
+        
+        stage('build') {
+            steps {
+                sh "mvn clean install"
+            }
+        }
+        
+        stage('build & Push docker image') {
+            steps {
+                script {
+                    withDockerRegistry(credentialsId: 'c69efe7c-4ec3-45f1-b26e-33b3b8a08a45', toolName: 'docker') {
+                        sh "docker build -t petstore ."
+                        sh "docker tag petstore vishnu1004/petstore:latest"
+                        sh "docker push vishnu1004/petstore:latest "
+                    }
+                }
+            }
+        }
+        
+        stage('Trivy') {
+            steps {
+                sh "trivy image vishnu1004/petstore "
+            }
+        }
+    } // Added closing brace for the 'stages' block
+    
+} // Added closing brace for the 'pipeline' block
+ 
